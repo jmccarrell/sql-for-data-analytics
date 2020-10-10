@@ -1,0 +1,330 @@
+#+PROPERTY: header-args:sql  :engine postgresql :dbhost localhost :database sqlda :dbuser sqlda :dbpassword dasql
+
+Jeff's notes from reading [[https://smile.amazon.com/s?k=sql+analytics&crid=9F2F09UWZ5ZM&sprefix=sql+analy%2Caps%2C211&ref=nb_sb_ss_i_1_9][SQL for Data Analytics]]
+
+** use partition to find duplicate rows over any columns
+
+   First, just show how the partitioning works
+   Each unique combination of first and last name is counted.
+
+
+   #+name: partition_by_name
+   #+BEGIN_SRC sql
+     select customer_id
+       , first_name
+       , last_name
+       , count(customer_id)
+          over (
+            partition by last_name, first_name
+          ) as count_by_names
+     from customers
+   #+END_SRC
+
+   for these data, we see that many? most? all? names are unique in this table.
+   At least the first 10 are.
+
+   #+name: count_by_name
+   #+BEGIN_SRC sql :noweb yes
+     <<partition_by_name>>
+     limit 10
+   #+END_SRC
+
+   #+RESULTS: count_by_name
+   | customer_id | first_name | last_name | count_by_names |
+   |-------------+------------+-----------+----------------|
+   |       22761 | Alair      | A'field   |              1 |
+   |       26384 | Halette    | A'field   |              1 |
+   |        5416 | Herminia   | A'field   |              1 |
+   |        9231 | Dilly      | Aaron     |              1 |
+   |       28110 | Joscelin   | Aarons    |              1 |
+   |       37941 | Talbert    | Aarons    |              1 |
+   |       37424 | Gerri      | Aasaf     |              1 |
+   |       37192 | Prescott   | Abad      |              1 |
+   |       13719 | Thia       | Abad      |              1 |
+   |       43575 | Lay        | Abadam    |              1 |
+
+   Next, use a subquery to find customers with duplicate first and last names.
+   We see that the are a few unique customer ids with the same first and last names.
+   But no customer names are repeated 3 times; only duplicates are found.
+
+   #+name: show_dup_names
+   #+BEGIN_SRC sql :noweb yes
+     select *
+     from (
+     <<partition_by_name>>
+     ) as a
+     where count_by_names > 1
+   #+END_SRC
+
+   #+RESULTS: show_dup_names
+   | customer_id | first_name | last_name  | count_by_names |
+   |-------------+------------+------------+----------------|
+   |        1419 | Dannye     | Gierth     |              2 |
+   |       24072 | Dannye     | Gierth     |              2 |
+   |       29695 | Devin      | Pilkington |              2 |
+   |       31162 | Devin      | Pilkington |              2 |
+   |       10262 | Darb       | Plail      |              2 |
+   |       44164 | Darb       | Plail      |              2 |
+   |        4355 | Orion      | Plum       |              2 |
+   |       46512 | Orion      | Plum       |              2 |
+
+   And, of course we can rewrite this using common table expressions:
+
+   #+name: find_dups_using_cte
+   #+BEGIN_SRC sql :noweb yes
+     with counts as (
+     <<partition_by_name>>
+     )
+     select *
+     from counts
+     where count_by_names > 1
+   #+END_SRC
+
+   #+RESULTS: find_dups_using_with
+   | customer_id | first_name | last_name  | count_by_names |
+   |-------------+------------+------------+----------------|
+   |        1419 | Dannye     | Gierth     |              2 |
+   |       24072 | Dannye     | Gierth     |              2 |
+   |       29695 | Devin      | Pilkington |              2 |
+   |       31162 | Devin      | Pilkington |              2 |
+   |       10262 | Darb       | Plail      |              2 |
+   |       44164 | Darb       | Plail      |              2 |
+   |        4355 | Orion      | Plum       |              2 |
+   |       46512 | Orion      | Plum       |              2 |
+** exercise 16: customer fill rates over time: OVER
+
+   the problem is: produce a running total of the number of customers in the database who have filled in
+   their addresses over time
+
+   we count only the non-null street addresses while ordering the values by date_added
+
+   #+BEGIN_SRC sql
+     select
+       customer_id
+       , street_address
+       , date_added::DATE,
+       count(
+         case
+           when street_address is not null
+           then customer_id
+           else NULL
+         end)
+         over (order by date_added::DATE)
+         as total_customers_filled_street
+       , row_number() over() as row_num
+     from customers
+     order by date_added
+     limit 56
+   #+END_SRC
+
+   #+RESULTS:
+   | customer_id | street_address                | date_added | total_customers_filled_street | row_num |
+   |-------------+-------------------------------+------------+-------------------------------+---------|
+   |        2625 | 0353 Iowa Road                | 2010-03-15 |                            10 |       1 |
+   |       17099 | 130 Marcy Crossing            | 2010-03-15 |                            10 |       2 |
+   |       18685 | 86 Michigan Junction          | 2010-03-15 |                            10 |       3 |
+   |       35683 | 1 Cordelia Crossing           | 2010-03-15 |                            10 |       4 |
+   |        6173 | 79865 Hagan Terrace           | 2010-03-15 |                            10 |       5 |
+   |       12484 |                               | 2010-03-15 |                            10 |       6 |
+   |       13390 | 38463 Forest Dale Way         | 2010-03-15 |                            10 |       7 |
+   |        7486 | 61 Village Crossing           | 2010-03-15 |                            10 |       8 |
+   |       30046 | 13961 Steensland Trail        | 2010-03-15 |                            10 |       9 |
+   |       30555 | 294 Quincy Hill               | 2010-03-15 |                            10 |      10 |
+   |       48307 | 8487 Warbler Plaza            | 2010-03-15 |                            10 |      11 |
+   |       48229 | 943 Cody Trail                | 2010-03-16 |                            22 |      12 |
+   |       42776 | 6010 Carey Drive              | 2010-03-16 |                            22 |      13 |
+   |       46277 | 5799 Thackeray Crossing       | 2010-03-16 |                            22 |      14 |
+   |       34189 | 0 Park Meadow Street          | 2010-03-16 |                            22 |      15 |
+   |        8571 | 39223 Lunder Street           | 2010-03-16 |                            22 |      16 |
+   |       17626 | 086 East Hill                 | 2010-03-16 |                            22 |      17 |
+   |       17832 | 62 Delladonna Road            | 2010-03-16 |                            22 |      18 |
+   |       18166 | 63044 Summer Ridge Parkway    | 2010-03-16 |                            22 |      19 |
+   |          18 | 907 Milwaukee Park            | 2010-03-16 |                            22 |      20 |
+   |       38885 | 827 Saint Paul Place          | 2010-03-16 |                            22 |      21 |
+   |       20253 |                               | 2010-03-16 |                            22 |      22 |
+   |       11153 | 04621 Waubesa Avenue          | 2010-03-16 |                            22 |      23 |
+   |       22640 | 96725 Cordelia Lane           | 2010-03-16 |                            22 |      24 |
+   |       33384 | 971 Burning Wood Crossing     | 2010-03-17 |                            33 |      25 |
+   |        4768 | 0543 Lien Drive               | 2010-03-17 |                            33 |      26 |
+   |       16392 | 569 Knutson Circle            | 2010-03-17 |                            33 |      27 |
+   |       35484 |                               | 2010-03-17 |                            33 |      28 |
+   |       37739 | 2 Larry Parkway               | 2010-03-17 |                            33 |      29 |
+   |        9712 | 9 Judy Center                 | 2010-03-17 |                            33 |      30 |
+   |       30038 | 37648 Johnson Alley           | 2010-03-17 |                            33 |      31 |
+   |       15781 | 38183 Anzinger Junction       | 2010-03-17 |                            33 |      32 |
+   |       46976 | 45793 Westridge Terrace       | 2010-03-17 |                            33 |      33 |
+   |       44032 | 7767 Lakewood Gardens Terrace | 2010-03-17 |                            33 |      34 |
+   |       45671 | 95 Petterle Drive             | 2010-03-17 |                            33 |      35 |
+   |       42449 | 3 Forest Run Pass             | 2010-03-17 |                            33 |      36 |
+   |       49518 | 59 Bellgrove Center           | 2010-03-18 |                            50 |      37 |
+   |       49076 | 91 Emmet Way                  | 2010-03-18 |                            50 |      38 |
+   |       43772 | 4129 Lindbergh Terrace        | 2010-03-18 |                            50 |      39 |
+   |       36326 | 0287 Maple Circle             | 2010-03-18 |                            50 |      40 |
+   |       37590 | 12 Dawn Circle                | 2010-03-18 |                            50 |      41 |
+   |       37840 | 7840 Debra Park               | 2010-03-18 |                            50 |      42 |
+   |         158 | 362 Spenser Lane              | 2010-03-18 |                            50 |      43 |
+   |       10732 | 02 Tennessee Circle           | 2010-03-18 |                            50 |      44 |
+   |         731 | 26 Cottonwood Plaza           | 2010-03-18 |                            50 |      45 |
+   |       12173 | 2 Forest Dale Terrace         | 2010-03-18 |                            50 |      46 |
+   |       22680 | 3902 Kedzie Point             | 2010-03-18 |                            50 |      47 |
+   |       23681 | 889 Fairview Place            | 2010-03-18 |                            50 |      48 |
+   |        3652 | 7478 Springs Terrace          | 2010-03-18 |                            50 |      49 |
+   |       13050 |                               | 2010-03-18 |                            50 |      50 |
+   |       27405 | 83777 Sachtjen Trail          | 2010-03-18 |                            50 |      51 |
+   |       14542 | 17027 John Wall Alley         | 2010-03-18 |                            50 |      52 |
+   |       14442 | 84 Delladonna Lane            | 2010-03-18 |                            50 |      53 |
+   |       30005 |                               | 2010-03-18 |                            50 |      54 |
+   |       16293 | 886 Harbort Center            | 2010-03-18 |                            50 |      55 |
+   |       32856 | 7 Brown Junction              | 2010-03-19 |                            71 |      56 |
+** exercise 17: rank order of hiring
+
+   problem: produce a list of sales people by dealership considering seniority
+   ie, we want the first hired ranked higher
+
+   #+BEGIN_SRC sql
+     select *
+       , rank()
+         over (partition by dealership_id order by hire_date)
+     from salespeople
+     where termination_date is null
+     limit 20
+   #+END_SRC
+
+   #+RESULTS:
+   | salesperson_id | dealership_id | title | first_name   | last_name | suffix | username     | gender | hire_date           | termination_date | rank |
+   |----------------+---------------+-------+--------------+-----------+--------+--------------+--------+---------------------+------------------+------|
+   |             65 |             1 |       | Dukie        | Oxteby    |        | doxteby1s    | Male   | 2015-01-24 00:00:00 |                  |    1 |
+   |             74 |             1 |       | Marcos       | Spong     |        | mspong21     | Male   | 2015-03-18 00:00:00 |                  |    2 |
+   |             60 |             1 |       | Eveleen      | Mace      |        | emace1n      | Female | 2015-07-15 00:00:00 |                  |    3 |
+   |             87 |             1 |       | Quent        | Wogden    |        | qwogden2e    | Male   | 2015-08-17 00:00:00 |                  |    4 |
+   |             98 |             1 |       | Englebert    | Loraine   |        | eloraine2p   | Male   | 2016-01-23 00:00:00 |                  |    5 |
+   |             31 |             1 |       | Lelia        | Sheriff   |        | lsheriffu    | Female | 2016-06-18 00:00:00 |                  |    6 |
+   |            168 |             1 |       | Sheff        | McCoughan |        | smccoughan4n | Male   | 2016-07-22 00:00:00 |                  |    7 |
+   |             49 |             1 |       | Nadia        | Rennick   |        | nrennick1c   | Female | 2016-07-24 00:00:00 |                  |    8 |
+   |             10 |             1 |       | Jereme       | Onele     |        | jonele9      | Male   | 2016-08-15 00:00:00 |                  |    9 |
+   |              7 |             1 |       | Granville    | Fidell    |        | gfidell6     | Male   | 2017-06-17 00:00:00 |                  |   10 |
+   |            155 |             1 |       | Ira          | Meere     |        | imeere4a     | Male   | 2017-09-11 00:00:00 |                  |   11 |
+   |            297 |             1 |       | Shay         | Nafziger  | Sr     | snafziger88  | Male   | 2017-12-03 00:00:00 |                  |   12 |
+   |            183 |             1 |       | Eleen        | McAndie   |        | emcandie52   | Female | 2018-07-08 00:00:00 |                  |   13 |
+   |            170 |             1 |       | Giselbert    | Schule    |        | gschule4p    | Male   | 2018-08-01 00:00:00 |                  |   14 |
+   |            162 |             1 |       | Cristine     | Gibbens   |        | cgibbens4h   | Female | 2018-10-07 00:00:00 |                  |   15 |
+   |            258 |             1 |       | Dorie        | Dosedale  |        | ddosedale75  | Male   | 2018-10-15 00:00:00 |                  |   16 |
+   |             92 |             1 | Rev   | Sandye       | Duny      |        | sduny2j      | Female | 2019-01-03 00:00:00 |                  |   17 |
+   |             39 |             1 |       | Massimiliano | McSpirron |        | mmcspirron12 | Male   | 2019-02-12 00:00:00 |                  |   18 |
+   |            163 |             1 |       | Lyda         | Prine     |        | lprine4i     | Female | 2019-02-18 00:00:00 |                  |   19 |
+   |             63 |             2 |       | Adrianne     | Otham     |        | aotham1q     | Female | 2014-12-20 00:00:00 |                  |    1 |
+
+** compute a 7 day rolling average of daily sales
+
+   #+BEGIN_SRC sql
+     with daily_sales as (
+       select
+         sales_transaction_date::DATE
+         , sum(sales_amount) as total_sales
+       from sales
+       group by 1
+     ),
+     moving_average_calculation_7 as (
+       select
+         sales_transaction_date
+         , total_sales
+         , avg(total_sales)
+           over (order by sales_transaction_date
+                 rows between 7 preceding and current row)
+           as sales_moving_average_7
+         , row_number() over (order by sales_transaction_date) as row_num
+       from daily_sales
+       order by 1
+     )
+     select
+       sales_transaction_date
+       , case
+           when row_num >= 7
+           then sales_moving_average_7
+           else NULL
+         end as moving_avg_7_null
+       , coalesce(sales_moving_average_7, 0) as moving_avg_7_zero
+     from moving_average_calculation_7
+     limit 20
+   #+END_SRC
+
+   #+RESULTS:
+   | sales_transaction_date | moving_avg_7_null | moving_avg_7_zero |
+   |------------------------+-------------------+-------------------|
+   |             2010-03-10 |                   |           359.991 |
+   |             2010-03-12 |                   |          379.9905 |
+   |             2010-03-15 |                   |           386.657 |
+   |             2010-03-17 |                   |         389.99025 |
+   |             2010-03-18 |                   |          391.9902 |
+   |             2010-03-19 |                   |          393.3235 |
+   |             2010-03-21 |  394.275857142857 |  394.275857142857 |
+   |             2010-03-23 |        394.990125 |        394.990125 |
+   |             2010-03-24 |            399.99 |            399.99 |
+   |             2010-03-25 |            399.99 |            399.99 |
+   |             2010-03-29 |         449.98875 |         449.98875 |
+   |             2010-04-01 |        544.986375 |        544.986375 |
+   |             2010-04-02 |        594.985125 |        594.985125 |
+   |             2010-04-03 |        594.985125 |        594.985125 |
+   |             2010-04-04 |         589.98525 |         589.98525 |
+   |             2010-04-05 |         589.98525 |         589.98525 |
+   |             2010-04-06 |           639.984 |           639.984 |
+   |             2010-04-07 |         689.98275 |         689.98275 |
+   |             2010-04-08 |        634.984125 |        634.984125 |
+   |             2010-04-09 |        584.985375 |        584.985375 |
+
+** activity 7: compute rank by dealership of 30 day rolling sales amount
+
+   #+BEGIN_SRC sql
+     with daily_sales as (
+       select sales_transaction_date::DATE
+         , dealership_id
+         -- , sum(sales_amount)
+         , sum(sales_amount) as total_sales_by_dealer_by_date
+       from sales
+       where dealership_id is not null
+         and sales_transaction_date >= '2018-01-01'::DATE
+         and sales_transaction_date <= '2018-12-31'::DATE
+       group by 2, 1
+     )
+     select *
+     from daily_sales
+     order by
+       sales_transaction_date
+       -- , dealership_id
+       , total_sales_by_dealer_by_date DESC
+     limit 30
+   #+END_SRC
+
+   #+RESULTS:
+   | sales_transaction_date | dealership_id | total_sales_by_dealer_by_date |
+   |------------------------+---------------+-------------------------------|
+   |             2018-01-01 |            16 |                       539.991 |
+   |             2018-01-01 |             3 |                        499.99 |
+   |             2018-01-01 |            15 |                        499.99 |
+   |             2018-01-02 |            11 |                      87049.98 |
+   |             2018-01-02 |            13 |                         85750 |
+   |             2018-01-02 |            20 |                      1159.982 |
+   |             2018-01-02 |             4 |                        699.99 |
+   |             2018-01-02 |            18 |                        599.99 |
+   |             2018-01-02 |            19 |                       559.992 |
+   |             2018-01-02 |             2 |                        499.99 |
+   |             2018-01-02 |            12 |                        499.99 |
+   |             2018-01-02 |            10 |                       449.991 |
+   |             2018-01-03 |             1 |                       1099.98 |
+   |             2018-01-03 |             7 |                       629.991 |
+   |             2018-01-03 |            10 |                       559.992 |
+   |             2018-01-03 |            14 |                        499.99 |
+   |             2018-01-04 |             1 |                     86849.982 |
+   |             2018-01-04 |             8 |                         58950 |
+   |             2018-01-04 |            18 |                         35000 |
+   |             2018-01-04 |            12 |                        699.99 |
+   |             2018-01-04 |             3 |                       629.991 |
+   |             2018-01-04 |            11 |                        599.99 |
+   |             2018-01-04 |            10 |                       559.992 |
+   |             2018-01-04 |            19 |                        499.99 |
+   |             2018-01-04 |             7 |                       449.991 |
+   |             2018-01-05 |             6 |                       629.991 |
+   |             2018-01-05 |             1 |                        599.99 |
+   |             2018-01-05 |             5 |                        599.99 |
+   |             2018-01-05 |            19 |                        599.99 |
+   |             2018-01-06 |             6 |                         35000 |
