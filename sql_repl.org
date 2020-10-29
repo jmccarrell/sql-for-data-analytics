@@ -53,3 +53,22 @@ NB: one can also do this kind of thing at [[http://sqlfiddle.com/#!17/acbf1/3][s
     |     18 | 473 |
     |     19 | 461 |
     |     20 | 499 |
+
+*** compute an average
+
+    #+begin_src sql
+      WITH data(value) AS (
+          SELECT trunc(random() * 100)+1 FROM generate_series(1,10000)
+      ), buckets as (
+          SELECT value, width_bucket(value, 1, 101, 20) as bucket
+          FROM data
+      )
+      select bucket
+             , avg(value)
+               over (partition by bucket)
+        from buckets
+       group by bucket
+    #+end_src
+
+    #+RESULTS:
+    |   |
