@@ -1,0 +1,12 @@
+#+PROPERTY: header-args:sql  :engine postgresql :dbhost localhost :database sqlda :dbuser sqlda :dbpassword dasql
+
+NB: one can also do this kind of thing at [[http://sqlfiddle.com/#!17/acbf1/3][sql fiddle]]
+
+#+BEGIN_SRC sql
+  select cast(1 * 100.0 / 3 as decimal(18, 4)) as n
+#+END_SRC
+
+#+RESULTS:
+|       n |
+|---------|
+| 33.3333 |
