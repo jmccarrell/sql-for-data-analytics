@@ -272,7 +272,7 @@ Jeff's notes from reading [[https://smile.amazon.com/s?k=sql+analytics&crid=9F2F
    |             2010-04-08 |        634.984125 |        634.984125 |
    |             2010-04-09 |        584.985375 |        584.985375 |
 
-** activity 7: compute rank by dealership of 30 day rolling sales amount
+** INCOMPLETE activity 7: compute rank by dealership of 30 day rolling sales amount
 
    #+BEGIN_SRC sql
      with daily_sales as (

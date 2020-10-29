@@ -2,6 +2,8 @@
 
 NB: one can also do this kind of thing at [[http://sqlfiddle.com/#!17/acbf1/3][sql fiddle]]
 
+** play with casting percentages so they look good on output
+
 #+BEGIN_SRC sql
   select cast(1 * 100.0 / 3 as decimal(18, 4)) as n
 #+END_SRC
@@ -10,3 +12,20 @@ NB: one can also do this kind of thing at [[http://sqlfiddle.com/#!17/acbf1/3][s
 |       n |
 |---------|
 | 33.3333 |
+
+** work with histograms
+
+*** here are 10k random integers counted and binned into 20 bins
+    #+begin_src sql
+      WITH data(value) AS (
+          SELECT trunc(random() * 100)+1 FROM generate_series(1,10000)
+      ), buckets as (
+          SELECT value, width_bucket(value, 1, 101, 20) as bucket
+          FROM data
+      )
+      select bucket
+             , max(count(1))
+               over (partition by bucket)
+        from buckets
+       group by bucket
+    #+end_src
